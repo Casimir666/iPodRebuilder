@@ -12,7 +12,7 @@
     <Name>iPodRebuilder</Name>
     <RootNamespace>iPodRebuilder</RootNamespace>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
-    <CommandLineArguments>-p -d 2 "D:\Temp\iPod\iPodshuffle_Relaxation\Relaxation\iPod_Control\\"</CommandLineArguments>
+    <CommandLineArguments>-p -t -d 2 "D:\Temp\iPod\iPodshuffle_Relaxation\Relaxation\iPod_Control\\"</CommandLineArguments>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
     <Environment>PATH=C:\Program Files (x86)\eSpeak\command_line</Environment>
   </PropertyGroup>

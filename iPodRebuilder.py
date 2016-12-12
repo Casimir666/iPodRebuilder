@@ -132,8 +132,8 @@ class Text2Speech(object):
             return True
 
         # ensure we deal with unicode later
-        if not isinstance(text, unicode):
-            text = unicode(text, 'utf-8')
+        if not isinstance(text, str):
+            text = str(text, 'utf-8')
         lang = Text2Speech.guess_lang(text)
         if lang == "ru-RU":
             return Text2Speech.rhvoice(out_wav_path, text)
@@ -204,18 +204,18 @@ class Record(object):
         self._fields[item] = value
 
     def construct(self):
-        output = ""
+        output = b''
         for i in self._struct.keys():
             (fmt, default) = self._struct[i]
             if fmt == "4s":
-                fmt, default = "I", int(binascii.hexlify(default), 16)
+                fmt, default = "I", int(binascii.hexlify(default.encode()), 16)
             output += struct.pack("<" + fmt, self._fields.get(i, default))
         return output
 
     def text_to_speech(self, text, dbid, playlist = False):
         if self.track_voiceover and not playlist or self.playlist_voiceover and playlist:
             # Create the voiceover wav file
-            fn = "".join(["{0:02X}".format(ord(x)) for x in reversed(dbid)])
+            fn = "".join(["{0:02X}".format(x) for x in reversed(dbid)])
             path = os.path.join(self.base, "iPod_Control", "Speakable", "Tracks" if not playlist else "Playlists", fn + ".wav")
             return Text2Speech.text2speech(path, text)
         return False
@@ -277,7 +277,7 @@ class TunesSD(Record):
                            ("total_tracks_without_podcasts", ("I", 0)),
                            ("track_header_offset", ("I", 64)),
                            ("playlist_header_offset", ("I", 0)),
-                           ("unknown4", ("20s", "\x00" * 20)),
+                           ("unknown4", ("20s", b"\x00" * 20)),
                                                ])
 
     def construct(self):
@@ -314,7 +314,7 @@ class TrackHeader(Record):
         output = Record.construct(self)
 
         # Construct the underlying tracks
-        track_chunk = ""
+        track_chunk = b""
         for i in self.tracks:
             track = Track(self)
             verboseprint("[*] Adding track", i)
@@ -334,7 +334,7 @@ class Track(Record):
                            ("stop_at_pos_ms", ("I", 0)),
                            ("volume_gain", ("I", int(self.trackgain))),
                            ("filetype", ("I", 1)),
-                           ("filename", ("256s", "\x00" * 256)),
+                           ("filename", ("256s", b"\x00" * 256)),
                            ("bookmark", ("I", 0)),
                            ("dontskip", ("B", 1)),
                            ("remember", ("B", 0)),
@@ -352,11 +352,11 @@ class Track(Record):
                            ("unknown4", ("Q", 0)),
                            ("dbid", ("8s", 0)),
                            ("artistid", ("I", 0)),
-                           ("unknown5", ("32s", "\x00" * 32)),
+                           ("unknown5", ("32s", b"\x00" * 32)),
                            ])
 
     def populate(self, filename):
-        self["filename"] = self.path_to_ipod(filename)
+        self["filename"] = self.path_to_ipod(filename).encode("utf-8")
 
         if os.path.splitext(filename)[1].lower() in (".m4a", ".m4b", ".m4p", ".aa"):
             self["filetype"] = 2
@@ -389,7 +389,7 @@ class Track(Record):
                 text = u" - ".join(audio.get("title", u"") + audio.get("artist", u""))
 
         # Handle the VoiceOverData
-        if isinstance(text, unicode):
+        if isinstance(text, str):
             text = text.encode('utf-8', 'ignore')
         self["dbid"] = hashlib.md5(text).digest()[:8] #pylint: disable-msg=E1101
         self.text_to_speech(text, self["dbid"])
@@ -402,10 +402,10 @@ class PlaylistHeader(Record):
                           ("header_id", ("4s", "shph")),
                           ("total_length", ("I", 0)),
                           ("number_of_playlists", ("I", 0)),
-                          ("number_of_non_podcast_lists", ("2s", "\xFF\xFF")),
-                          ("number_of_master_lists", ("2s", "\x01\x00")),
-                          ("number_of_non_audiobook_lists", ("2s", "\xFF\xFF")),
-                          ("unknown2", ("2s", "\x00" * 2)),
+                          ("number_of_non_podcast_lists", ("2s", b"\xFF\xFF")),
+                          ("number_of_master_lists", ("2s", b"\x01\x00")),
+                          ("number_of_non_audiobook_lists", ("2s", b"\xFF\xFF")),
+                          ("unknown2", ("2s", b"\x00" * 2)),
                                               ])
 
     def construct(self, tracks): #pylint: disable-msg=W0221
@@ -439,7 +439,7 @@ class PlaylistHeader(Record):
             output += struct.pack("I", offset)
             offset += len(chunks[i])
 
-        return output + "".join(chunks)
+        return output + b"".join(chunks)
 
 class Playlist(Record):
     def __init__(self, parent):
@@ -452,14 +452,14 @@ class Playlist(Record):
                           ("number_of_nonaudio", ("I", 0)),
                           ("dbid", ("8s", "\x00" * 8)),
                           ("listtype", ("I", 2)),
-                          ("unknown1", ("16s", "\x00" * 16))
+                          ("unknown1", ("16s", b"\x00" * 16))
                                               ])
 
     def set_master(self, tracks):
         # By default use "All Songs" builtin voiceover (dbid all zero)
         # Else generate alternative "All Songs" to fit the speaker voice of other playlists
         if self.playlist_voiceover and (Text2Speech.valid_tts['pico2wave'] or Text2Speech.valid_tts['espeak']):
-            self["dbid"] = hashlib.md5("masterlist").digest()[:8] #pylint: disable-msg=E1101
+            self["dbid"] = hashlib.md5("masterlist".encode("utf-8")).digest()[:8] #pylint: disable-msg=E1101
             self.text_to_speech("All songs", self["dbid"], True)
         self["listtype"] = 1
         self.listtracks = tracks
@@ -467,7 +467,7 @@ class Playlist(Record):
     def populate_m3u(self, data):
         listtracks = []
         for i in data:
-            if not i.startswith("#"):
+            if not i.startswith(b"#"):
                 path = i.strip()
                 if self.rename:
                     path = validate_unicode(path)
@@ -512,7 +512,7 @@ class Playlist(Record):
     def remove_relatives(self, relative, filename):
         base = os.path.dirname(os.path.abspath(filename))
         if not os.path.exists(relative):
-            relative = os.path.join(base, relative)
+            relative = os.path.join(base, str(relative, "utf-8"))
         fullPath = relative
         return fullPath
 
@@ -545,7 +545,7 @@ class Playlist(Record):
                 text = os.path.splitext(os.path.basename(filename))[0]
 
         # Handle the VoiceOverData
-        if isinstance(text, unicode):
+        if isinstance(text, str):
             text = text.encode('utf-8', 'ignore')
         self["dbid"] = hashlib.md5(text).digest()[:8] #pylint: disable-msg=E1101
         self.text_to_speech(text, self["dbid"], True)
@@ -554,7 +554,7 @@ class Playlist(Record):
         self["total_length"] = 44 + (4 * len(self.listtracks))
         self["number_of_songs"] = 0
 
-        chunks = ""
+        chunks = b""
         for i in self.listtracks:
             path = self.ipod_to_path(i)
             position = -1
